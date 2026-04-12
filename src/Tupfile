@@ -1,0 +1,5 @@
+include_rules
+
+: foreach main.c tree_vis.c xdg-shell-protocol.c |> !cc |>
+
+.gitignore

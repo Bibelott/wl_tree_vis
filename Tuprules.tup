@@ -1,0 +1,18 @@
+CC=clang
+CXX=clang++
+LD=mold
+
+CFLAGS += -Wall -std=c11 -ffast-math -fPIC
+
+ifeq (@(DEBUG),y)
+CFLAGS += -g
+else
+CFLAGS += -O2
+endif
+
+CXXFLAGS = $(CFLAGS)
+
+!cc = |> ^j^ $(CC) $(CFLAGS) -c %f -o %o |> %B.o
+!cxx = |> ^j^ $(CXX) $(CXXFLAGS) -c %f -o %o |> %B.o
+
+.gitignore

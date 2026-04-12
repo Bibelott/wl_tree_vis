@@ -1,0 +1,18 @@
+[
+,
+{
+    "directory": "/home/baubles/Dev/C/wl_tree_vis/src",
+    "command": "clang -Wall -std=c11 -ffast-math -fPIC -O2 -c main.c -o ../build/src/main.o",
+    "file": "main.c"
+},
+{
+    "directory": "/home/baubles/Dev/C/wl_tree_vis/src",
+    "command": "clang -Wall -std=c11 -ffast-math -fPIC -O2 -c tree_vis.c -o ../build/src/tree_vis.o",
+    "file": "tree_vis.c"
+},
+{
+    "directory": "/home/baubles/Dev/C/wl_tree_vis/src",
+    "command": "clang -Wall -std=c11 -ffast-math -fPIC -O2 -c xdg-shell-protocol.c -o ../build/src/xdg-shell-protocol.o",
+    "file": "xdg-shell-protocol.c"
+}
+]
