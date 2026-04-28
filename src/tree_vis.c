@@ -32,7 +32,7 @@ typedef struct {
 typedef struct {
     int32_t x;
     int32_t y;
-} Point;
+} Vec2;
 
 typedef union {
     struct {
@@ -54,6 +54,17 @@ Color color_from_rgb(uint8_t r, uint8_t g, uint8_t b) {
     return color;
 }
 
+Vec2 vec_from_xy(int32_t x, int32_t y) {
+    Vec2 v = {.x = x, .y = y};
+    return v;
+}
+
+uint32_t in_bounds(PixelBuffer *buf, Vec2 point) {
+    if (point.x < 0 || point.x >= buf->width || point.y < 0 || point.y >= buf->height)
+        return 0;
+    return 1;
+}
+
 Color blend(Color c1, Color c2, float opacity) {
     Color new_color = {0};
     new_color.r = lerp(c1.r, c2.r, opacity);
@@ -62,15 +73,15 @@ Color blend(Color c1, Color c2, float opacity) {
     return new_color;
 }
 
-void blend_in(PixelBuffer *buf, Point p, Color color, float opacity) {
+void blend_in(PixelBuffer *buf, Vec2 p, Color color, float opacity) {
     uint32_t *raw = &buf->fer[p.y * buf->width + p.x];
     Color old_color = {.hex = *raw};
     Color new_color = blend(old_color, color, opacity);
     *raw = new_color.hex;
 }
 
-// NOTE: Based on Wu's line generation algorithm
-void draw_line(PixelBuffer *buf, Point point1, Point point2, Color color) {
+// NOTE: Based on Wu's line generation algorithm (https://doi.org/10.1145%2F127719.122734)
+void draw_line(PixelBuffer *buf, Vec2 point1, Vec2 point2, Color color) {
     int32_t y_diff = point1.y - point2.y;
     int32_t x_diff = point1.x - point2.x;
 
@@ -91,8 +102,8 @@ void draw_line(PixelBuffer *buf, Point point1, Point point2, Color color) {
     float slope = (float)y_diff / (float)x_diff;
     float offset = point1.y - slope * point1.x; // y = mx + b -> b = y - mx
 
-    Point start = point1.x < point2.x ? point1 : point2;
-    Point end = (start.x == point1.x && start.y == point1.y) ? point2 : point1;
+    Vec2 start = point1.x < point2.x ? point1 : point2;
+    Vec2 end = (start.x == point1.x && start.y == point1.y) ? point2 : point1;
 
     int32_t x = max(start.x, 0);
     float y = slope * (float)x + offset; // y = mx + b
@@ -101,7 +112,7 @@ void draw_line(PixelBuffer *buf, Point point1, Point point2, Color color) {
         int32_t y_down = y;
         int32_t y_up = y + 1;
         float y_frac = y - (float)y_down;
-        Point p_down, p_up;
+        Vec2 p_down, p_up;
 
         if (!flipped) {
             p_down.x = x;
@@ -124,21 +135,62 @@ void draw_line(PixelBuffer *buf, Point point1, Point point2, Color color) {
     }
 }
 
-void draw_circle(PixelBuffer *buf, Point center, int32_t radius, Color color) {
-    // TODO: There's gotta be a better way
-    for (int32_t y = max(center.y - radius, 0); y <= min(center.y + radius, buf->height - 1); y++) {
+void put_pixel_antialiased(PixelBuffer *buf, Vec2 position, Color color, float intensity,
+                           Vec2 outside_dir) {
+    Vec2 p_down = {position.x, position.y};
+    Vec2 p_up = {position.x + outside_dir.x, position.y + outside_dir.y};
 
-        for (int32_t x = max(center.x - radius, 0); x <= min(center.x + radius, buf->width - 1);
-             x++) {
+    if (in_bounds(buf, p_down))
+        blend_in(buf, p_down, color, 1 - intensity);
+    if (in_bounds(buf, p_up))
+        blend_in(buf, p_up, color, intensity);
+}
 
-            if (sqr(x - center.x) + sqr(y - center.y) <= sqr(radius)) {
-                buf->fer[y * buf->width + x] = color.hex;
-            }
+// NOTE: Based on Wu's midpoint circle generation (https://doi.org/10.1145%2F127719.122734), but
+// filled in
+void draw_circle(PixelBuffer *buf, Vec2 center, int32_t radius, Color color) {
+    int32_t x = 0;
+    float y = radius;
+
+    while (x < y) {
+        int32_t y_down = y;
+        float y_frac = y - (float)y_down;
+
+        put_pixel_antialiased(buf, vec_from_xy(x + center.x, y_down + center.y), color, y_frac,
+                              vec_from_xy(0, 1));
+        put_pixel_antialiased(buf, vec_from_xy(-x + center.x, y_down + center.y), color, y_frac,
+                              vec_from_xy(0, 1));
+        put_pixel_antialiased(buf, vec_from_xy(-x + center.x, -y_down + center.y), color, y_frac,
+                              vec_from_xy(0, -1));
+        put_pixel_antialiased(buf, vec_from_xy(x + center.x, -y_down + center.y), color, y_frac,
+                              vec_from_xy(0, -1));
+        put_pixel_antialiased(buf, vec_from_xy(y_down + center.x, x + center.y), color, y_frac,
+                              vec_from_xy(1, 0));
+        put_pixel_antialiased(buf, vec_from_xy(-y_down + center.x, x + center.y), color, y_frac,
+                              vec_from_xy(-1, 0));
+        put_pixel_antialiased(buf, vec_from_xy(-y_down + center.x, -x + center.y), color, y_frac,
+                              vec_from_xy(-1, 0));
+        put_pixel_antialiased(buf, vec_from_xy(y_down + center.x, -x + center.y), color, y_frac,
+                              vec_from_xy(1, 0));
+
+        x += 1;
+        y = sqrtf((float)sqr(radius) - (float)sqr(x)); // x^2 + y^2 = r^2 -> y = (r^2 - x^2)^1/2
+    }
+
+    for (int32_t y = -radius + 1; y < radius; y++) {
+        int32_t x_bound = ceilf(sqrtf((float)sqr(radius) - (float)sqr(y)));
+        for (int32_t x = -x_bound + 1; x < x_bound; x++) {
+            Vec2 position = {center.x + x, center.y + y};
+
+            if (!in_bounds(buf, position))
+                break;
+
+            buf->fer[position.y * buf->width + position.x] = color.hex;
         }
     }
 }
 
-void draw_tree(PixelBuffer *buf, Node *node, Point p, int32_t left_bound, int32_t right_bound,
+void draw_tree(PixelBuffer *buf, Node *node, Vec2 p, int32_t left_bound, int32_t right_bound,
                int32_t max_radius) {
     if (!node)
         return;
@@ -151,8 +203,8 @@ void draw_tree(PixelBuffer *buf, Node *node, Point p, int32_t left_bound, int32_
     int32_t middle_x = left_x + x_unit;
     int32_t right_x = middle_x + x_unit;
 
-    Point left = {left_x, next_y};
-    Point right = {right_x, next_y};
+    Vec2 left = {left_x, next_y};
+    Vec2 right = {right_x, next_y};
 
     int32_t radius = (int32_t)min(1.75 * (float)x_unit, (float)max_radius);
 
@@ -182,7 +234,7 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height, uint32
     buf.width = width;
     buf.height = height;
 
-    Point p = {width / 2, 50};
+    Vec2 p = {width / 2, 50};
 
     node_timer += time_delta;
 
