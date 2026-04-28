@@ -6,10 +6,10 @@
 #include <string.h>
 #include <unistd.h>
 
-#define COLOR_RED 0xFF0000
-#define COLOR_BLACK 0x000000
-#define COLOR_WHITE 0xFFFFFF
-#define COLOR_GREEN 0x00FF00
+#define COLOR_RED color_from_hex(0xFF0000)
+#define COLOR_BLACK color_from_hex(0x000000)
+#define COLOR_WHITE color_from_hex(0xFFFFFF)
+#define COLOR_GREEN color_from_hex(0x00FF00)
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -21,6 +21,7 @@
         a = b;                                                                                     \
         b = tmp;                                                                                   \
     } while (0)
+#define lerp(a, b, r) ((1 - (r)) * (a) + (r) * (b))
 
 typedef struct {
     uint32_t *fer;
@@ -33,7 +34,43 @@ typedef struct {
     int32_t y;
 } Point;
 
-void draw_line(PixelBuffer *buf, Point point1, Point point2, uint32_t color) {
+typedef union {
+    struct {
+        uint8_t x;
+        uint8_t r;
+        uint8_t g;
+        uint8_t b;
+    };
+    uint32_t hex;
+} Color;
+
+Color color_from_hex(uint32_t hex) {
+    Color color = {.hex = hex};
+    return color;
+}
+
+Color color_from_rgb(uint8_t r, uint8_t g, uint8_t b) {
+    Color color = {.r = r, .g = g, .b = b};
+    return color;
+}
+
+Color blend(Color c1, Color c2, float opacity) {
+    Color new_color = {0};
+    new_color.r = lerp(c1.r, c2.r, opacity);
+    new_color.g = lerp(c1.g, c2.g, opacity);
+    new_color.b = lerp(c1.b, c2.b, opacity);
+    return new_color;
+}
+
+void blend_in(PixelBuffer *buf, Point p, Color color, float opacity) {
+    uint32_t *raw = &buf->fer[p.y * buf->width + p.x];
+    Color old_color = {.hex = *raw};
+    Color new_color = blend(old_color, color, opacity);
+    *raw = new_color.hex;
+}
+
+// NOTE: Based on Wu's line generation algorithm
+void draw_line(PixelBuffer *buf, Point point1, Point point2, Color color) {
     int32_t y_diff = point1.y - point2.y;
     int32_t x_diff = point1.x - point2.x;
 
@@ -57,19 +94,37 @@ void draw_line(PixelBuffer *buf, Point point1, Point point2, uint32_t color) {
     Point start = point1.x < point2.x ? point1 : point2;
     Point end = (start.x == point1.x && start.y == point1.y) ? point2 : point1;
 
-    for (int32_t x = max(start.x, 0); x <= min(end.x, (flipped ? buf->height : buf->width) - 1);
-         x++) {
-        // y = mx + b
-        int32_t y = slope * (float)x + offset;
+    int32_t x = max(start.x, 0);
+    float y = slope * (float)x + offset; // y = mx + b
 
-        if (!flipped)
-            buf->fer[y * buf->width + x] = color;
-        else
-            buf->fer[x * buf->width + y] = color;
+    for (; x <= min(end.x, (flipped ? buf->height : buf->width) - 1); x++) {
+        int32_t y_down = y;
+        int32_t y_up = y + 1;
+        float y_frac = y - (float)y_down;
+        Point p_down, p_up;
+
+        if (!flipped) {
+            p_down.x = x;
+            p_down.y = y_down;
+
+            p_up.x = x;
+            p_up.y = y_up;
+        } else {
+            p_down.x = y_down;
+            p_down.y = x;
+
+            p_up.x = y_up;
+            p_up.y = x;
+        }
+
+        blend_in(buf, p_down, color, 1 - y_frac);
+        blend_in(buf, p_up, color, y_frac);
+
+        y += slope;
     }
 }
 
-void draw_circle(PixelBuffer *buf, Point center, int32_t radius, uint32_t color) {
+void draw_circle(PixelBuffer *buf, Point center, int32_t radius, Color color) {
     // TODO: There's gotta be a better way
     for (int32_t y = max(center.y - radius, 0); y <= min(center.y + radius, buf->height - 1); y++) {
 
@@ -77,7 +132,7 @@ void draw_circle(PixelBuffer *buf, Point center, int32_t radius, uint32_t color)
              x++) {
 
             if (sqr(x - center.x) + sqr(y - center.y) <= sqr(radius)) {
-                buf->fer[y * buf->width + x] = color;
+                buf->fer[y * buf->width + x] = color.hex;
             }
         }
     }
@@ -88,7 +143,7 @@ void draw_tree(PixelBuffer *buf, Node *node, Point p, int32_t left_bound, int32_
     if (!node)
         return;
 
-    uint32_t color = llrb_is_node_red(node) ? COLOR_RED : COLOR_BLACK;
+    Color color = llrb_is_node_red(node) ? COLOR_RED : COLOR_BLACK;
 
     int32_t next_y = p.y + buf->height / 10;
     int32_t x_unit = (right_bound - left_bound) / 4;
