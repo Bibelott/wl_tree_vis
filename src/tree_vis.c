@@ -1,3 +1,4 @@
+#include "dyn_array.c"
 #include "llrb.c"
 #include <math.h>
 #include <stdint.h>
