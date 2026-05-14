@@ -1,61 +1,13 @@
+#include "tree_vis.h"
 #include "dyn_array.c"
 #include "llrb.c"
+#include "tree_vis_internal.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#define COLOR_RED color_from_hex(0xFF0000)
-#define COLOR_BLACK color_from_hex(0x000000)
-#define COLOR_WHITE color_from_hex(0xFFFFFF)
-#define COLOR_GREEN color_from_hex(0x00FF00)
-
-#define max(a, b) ((a) > (b) ? (a) : (b))
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#define abs(x) ((x) < 0 ? (-x) : (x))
-#define sqr(x) ((x) * (x))
-#define swap(a, b, T)                                                                              \
-    do {                                                                                           \
-        T tmp = a;                                                                                 \
-        a = b;                                                                                     \
-        b = tmp;                                                                                   \
-    } while (0)
-#define lerp(a, b, r) ((1 - (r)) * (a) + (r) * (b))
-
-typedef struct {
-    uint32_t *fer;
-    uint32_t width;
-    uint32_t height;
-} PixelBuffer;
-
-typedef struct {
-    int32_t x;
-    int32_t y;
-} Vec2;
-
-typedef union {
-    struct {
-        uint8_t x;
-        uint8_t r;
-        uint8_t g;
-        uint8_t b;
-    };
-    uint32_t hex;
-} Color;
-
-typedef struct {
-    Vec2 *start;
-    Vec2 *end;
-    Color color;
-} Line;
-
-typedef struct {
-    Vec2 *center;
-    uint32_t radius;
-    Color color;
-} Circle;
 
 Color color_from_hex(uint32_t hex) {
     Color color = {.hex = hex};
