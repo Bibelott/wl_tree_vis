@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,75 +6,79 @@
 
 #define ARR_INIT_SIZE 8
 #define arr_get(arr, i, type) ((type *)((arr)->ay))[i]
-#define arr_len(arr, type) (((arr)->length) / sizeof(type))
-#define arr_push(arr, elem) arr_push_impl((arr), &(elem), sizeof(elem))
-#define arr_find(arr, elem) arr_find_impl((arr), &(elem), sizeof(elem))
-#define arr_push_unique(arr, elem) arr_push_unique_impl((arr), &(elem), sizeof(elem))
+#define arr_index(arr, i) ((arr)->ay)[i * (arr)->element_size]
 
-// FIX: We cannot be returning pointers. They get when we grow. Return indices instead.
-//
-// NOTE: length and capacity are in bytes
 typedef struct {
     uint32_t length;
     uint32_t capacity;
+    uint32_t element_size;
     void *ay;
 } Array;
 
-void arr_grow_by(Array *arr, uint32_t elem_size) {
-    if (arr->length + elem_size <= arr->capacity) {
-        return;
-    }
+Array arr_create(uint32_t elem_size) {
+    assert(elem_size > 0);
 
-    if (arr->capacity == 0) {
-        arr->capacity = ARR_INIT_SIZE * elem_size;
-        arr->ay = calloc(ARR_INIT_SIZE, elem_size);
+    void *buffer = calloc(ARR_INIT_SIZE, elem_size);
+    Array arr = {.length = 0, .capacity = ARR_INIT_SIZE, .element_size = elem_size, .ay = buffer};
+    return arr;
+}
 
+// Increases array capacity to fit at least n additional elements
+void arr_grow_by(Array *arr, uint32_t n) {
+    assert(arr->capacity > 0);
+    assert(arr->element_size > 0);
+
+    if (arr->length + n <= arr->capacity) {
         return;
     }
 
     do {
         arr->capacity *= 2;
-    } while (arr->capacity < arr->length + elem_size);
+    } while (arr->capacity < arr->length + n);
 
-    void *newArray = calloc(1, arr->capacity);
+    void *newArray = calloc(arr->element_size, arr->capacity);
 
-    memcpy(newArray, arr->ay, arr->length);
+    memcpy(newArray, arr->ay, arr->length * arr->element_size);
 
     free(arr->ay);
 
     arr->ay = newArray;
 }
 
-void *arr_push_impl(Array *arr, void *elem, uint32_t size) {
-    arr_grow_by(arr, size);
+uint32_t arr_push(Array *arr, void *elem) {
+    assert(arr->element_size > 0);
 
-    void *addr = memcpy(&arr->ay[arr->length], elem, size);
+    arr_grow_by(arr, 1);
 
-    arr->length += size;
+    memcpy(&arr_index(arr, arr->length), elem, arr->element_size);
 
-    return addr;
+    return arr->length++;
 }
 
-void *arr_find_impl(Array *arr, void *elem, uint32_t size) {
-    for (uint32_t offset = 0; offset < arr->length; offset += size) {
-        if (memcmp(&arr->ay[offset], elem, size))
-            return &arr->ay[offset];
+uint32_t arr_find(Array *arr, void *elem) {
+    assert(arr->element_size > 0);
+
+    for (uint32_t index = 0; index < arr->length; index++) {
+        if (memcmp(&arr_index(arr, index), elem, arr->element_size))
+            return index;
     }
 
-    return NULL;
+    return -1;
 }
 
-void *arr_push_unique_impl(Array *arr, void *elem, uint32_t size) {
-    void *found = arr_find_impl(arr, elem, size);
-    if (found == NULL)
-        return arr_push_impl(arr, elem, size);
+uint32_t arr_push_unique(Array *arr, void *elem) {
+    uint32_t found = arr_find(arr, elem);
+    if (found == -1)
+        return arr_push(arr, elem);
 
     return found;
 }
 
-void *arr_pop(Array *arr, uint32_t size) {
-    arr->length -= size;
-    return &arr->ay[arr->length];
+uint32_t arr_pop(Array *arr) {
+    if (arr->length == 0)
+        return 0;
+
+    return arr->length--;
 }
 
 void arr_free(Array *arr) {

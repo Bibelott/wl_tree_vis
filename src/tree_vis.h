@@ -28,13 +28,13 @@ typedef union {
 } Color;
 
 typedef struct {
-    Vec2 *start;
-    Vec2 *end;
+    uint32_t start;
+    uint32_t end;
     Color color;
 } Line;
 
 typedef struct {
-    Vec2 *center;
+    uint32_t center;
     uint32_t radius;
     Color color;
 } Circle;

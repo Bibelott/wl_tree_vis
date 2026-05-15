@@ -45,16 +45,17 @@ void blend_in(PixelBuffer *buf, Vec2 p, Color color, float opacity) {
     *raw = new_color.hex;
 }
 
-Line create_line(Vec2 *point1, Vec2 *point2, Color color) {
+Line create_line(uint32_t point1, uint32_t point2, Color color) {
     Line line = {.start = point1, .end = point2, .color = color};
     return line;
 }
 
 // NOTE: Based on Wu's line generation algorithm (https://doi.org/10.1145%2F127719.122734)
-void draw_line(PixelBuffer *buf, Line *line) {
-    Vec2 point1 = *line->start;
-    Vec2 point2 = *line->end;
-    Color color = line->color;
+void draw_line(PixelBuffer *buf, Array *points, Array *lines, uint32_t line_index) {
+    Line line = arr_get(lines, line_index, Line);
+    Vec2 point1 = arr_get(points, line.start, Vec2);
+    Vec2 point2 = arr_get(points, line.end, Vec2);
+    Color color = line.color;
 
     int32_t y_diff = point1.y - point2.y;
     int32_t x_diff = point1.x - point2.x;
@@ -120,17 +121,18 @@ void put_pixel_antialiased(PixelBuffer *buf, Vec2 position, Color color, float i
         blend_in(buf, p_up, color, intensity);
 }
 
-Circle create_circle(Vec2 *center, uint32_t radius, Color color) {
+Circle create_circle(uint32_t center, uint32_t radius, Color color) {
     Circle circle = {center, radius, color};
     return circle;
 }
 
 // NOTE: Based on Wu's midpoint circle generation (https://doi.org/10.1145%2F127719.122734), but
 // filled in
-void draw_circle(PixelBuffer *buf, Circle *circle) {
-    Vec2 center = *circle->center;
-    int32_t radius = circle->radius;
-    Color color = circle->color;
+void draw_circle(PixelBuffer *buf, Array *points, Array *circles, uint32_t circle_index) {
+    Circle circle = arr_get(circles, circle_index, Circle);
+    Vec2 center = arr_get(points, circle.center, Vec2);
+    int32_t radius = circle.radius;
+    Color color = circle.color;
 
     int32_t x = 0;
     float y = radius;
@@ -181,7 +183,7 @@ void update_tree(PixelBuffer *buf, Array *points, Array *lines, Array *circles, 
 
     Color color = llrb_is_node_red(node) ? COLOR_RED : COLOR_BLACK;
 
-    int32_t next_y = node->point->y + buf->height / 10;
+    int32_t next_y = arr_get(points, node->point_index, Vec2).y + buf->height / 10;
     int32_t x_unit = (right_bound - left_bound) / 4;
     int32_t left_x = left_bound + x_unit;
     int32_t middle_x = left_x + x_unit;
@@ -190,15 +192,15 @@ void update_tree(PixelBuffer *buf, Array *points, Array *lines, Array *circles, 
     int32_t radius = (int32_t)min(1.75 * (float)x_unit, (float)max_radius);
 
     if (node->left) {
-        if (!node->left->point) {
+        if (!node->left->point_index) {
             Vec2 left = {left_x, next_y};
-            node->left->point = arr_push(points, left);
+            node->left->point_index = arr_push(points, &left);
 
-            Circle c = create_circle(node->left->point, radius, color);
-            arr_push(circles, c);
+            Circle c = create_circle(node->left->point_index, radius, color);
+            arr_push(circles, &c);
 
-            Line l = create_line(node->point, node->left->point, COLOR_GREEN);
-            arr_push(lines, l);
+            Line l = create_line(node->point_index, node->left->point_index, COLOR_GREEN);
+            arr_push(lines, &l);
         }
 
         update_tree(buf, points, lines, circles, node->left, left_bound, min(middle_x, buf->width),
@@ -206,15 +208,15 @@ void update_tree(PixelBuffer *buf, Array *points, Array *lines, Array *circles, 
     }
 
     if (node->right) {
-        if (!node->right->point) {
+        if (!node->right->point_index) {
             Vec2 right = {right_x, next_y};
-            node->right->point = arr_push(points, right);
+            node->right->point_index = arr_push(points, &right);
 
-            Circle c = create_circle(node->right->point, radius, color);
-            arr_push(circles, c);
+            Circle c = create_circle(node->right->point_index, radius, color);
+            arr_push(circles, &c);
 
-            Line l = create_line(node->point, node->right->point, COLOR_GREEN);
-            arr_push(lines, l);
+            Line l = create_line(node->point_index, node->right->point_index, COLOR_GREEN);
+            arr_push(lines, &l);
         }
 
         update_tree(buf, points, lines, circles, node->right, max(0, middle_x), right_bound,
@@ -233,6 +235,15 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height, uint32
     // clear buffer
     memset(buffer, 0x2A, width * height * sizeof(uint32_t));
 
+    if (points.capacity == 0)
+        points = arr_create(sizeof(Vec2));
+
+    if (lines.capacity == 0)
+        lines = arr_create(sizeof(Line));
+
+    if (circles.capacity == 0)
+        circles = arr_create(sizeof(Circle));
+
     PixelBuffer buf = {0};
     buf.fer = buffer;
     buf.width = width;
@@ -245,21 +256,19 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height, uint32
         counter++;
         root = llrb_push(root, rand());
 
-        if (!root->point) {
+        if (!root->point_index) {
             Vec2 p = {width / 2, 50};
-            root->point = arr_push(&points, p);
+            root->point_index = arr_push(&points, &p);
         }
     }
 
     update_tree(&buf, &points, &lines, &circles, root, width / 20, 19 * width / 20, 15);
 
-    for (int i = 0; i < arr_len(&lines, Line); i++) {
-        Line *l = &arr_get(&lines, i, Line);
-        draw_line(&buf, l);
+    for (int i = 0; i < lines.length; i++) {
+        draw_line(&buf, &points, &lines, i);
     }
 
-    for (int i = 0; i < arr_len(&circles, Circle); i++) {
-        Circle *c = &arr_get(&circles, i, Circle);
-        draw_circle(&buf, c);
+    for (int i = 0; i < circles.length; i++) {
+        draw_circle(&buf, &points, &circles, i);
     }
 }

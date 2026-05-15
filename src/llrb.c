@@ -1,4 +1,3 @@
-#include "tree_vis.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +12,7 @@ typedef struct Node {
     struct Node *right;
 
     // TODO: Figure this shit out
-    Vec2 *point;
+    uint32_t point_index;
 } Node;
 
 Node *llrb_new_node(int32_t value) {
