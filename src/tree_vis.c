@@ -1,5 +1,5 @@
 #include "tree_vis.h"
-#include "dyn_array.c"
+#include "dyn_array.h"
 #include "llrb.c"
 #include "tree_vis_internal.h"
 #include <math.h>
@@ -9,28 +9,14 @@
 #include <string.h>
 #include <unistd.h>
 
-Color color_from_hex(uint32_t hex) {
-    Color color = {.hex = hex};
-    return color;
-}
-
-Color color_from_rgb(uint8_t r, uint8_t g, uint8_t b) {
-    Color color = {.r = r, .g = g, .b = b};
-    return color;
-}
-
-Vec2 vec_from_xy(int32_t x, int32_t y) {
-    Vec2 v = {.x = x, .y = y};
-    return v;
-}
-
-uint32_t in_bounds(PixelBuffer *buf, Vec2 point) {
+uint32_t in_bounds(PixelBuffer *buf, iVec2 point) {
     if (point.x < 0 || point.x >= buf->width || point.y < 0 || point.y >= buf->height)
         return 0;
     return 1;
 }
 
 Color blend(Color c1, Color c2, float opacity) {
+    opacity = clamp(opacity, 0.0f, 1.0f);
     Color new_color = {0};
     new_color.r = lerp(c1.r, c2.r, opacity);
     new_color.g = lerp(c1.g, c2.g, opacity);
@@ -38,7 +24,7 @@ Color blend(Color c1, Color c2, float opacity) {
     return new_color;
 }
 
-void blend_in(PixelBuffer *buf, Vec2 p, Color color, float opacity) {
+void blend_in(PixelBuffer *buf, iVec2 p, Color color, float opacity) {
     uint32_t *raw = &buf->fer[p.y * buf->width + p.x];
     Color old_color = {.hex = *raw};
     Color new_color = blend(old_color, color, opacity);
@@ -50,6 +36,20 @@ Line create_line(uint32_t point1, uint32_t point2, Color color) {
     return line;
 }
 
+// TODO: Determine whether this is an idiotic thing to do
+void put_pixels_antialiased(PixelBuffer *buf, Vec2 position, Color color) {
+    for (int32_t y = -1; y <= 1; y++) {
+        for (int32_t x = -1; x <= 1; x++) {
+            Vec2 p = {roundf(position.x + (float)x), roundf(position.y + (float)y)};
+            iVec2 ip = {p.x, p.y};
+
+            if (in_bounds(buf, ip)) {
+                blend_in(buf, ip, color, 1.0f - vec_distance(position, p));
+            }
+        }
+    }
+}
+
 // NOTE: Based on Wu's line generation algorithm (https://doi.org/10.1145%2F127719.122734)
 void draw_line(PixelBuffer *buf, Array *points, Array *lines, uint32_t line_index) {
     Line line = arr_get(lines, line_index, Line);
@@ -57,10 +57,10 @@ void draw_line(PixelBuffer *buf, Array *points, Array *lines, uint32_t line_inde
     Vec2 point2 = arr_get(points, line.end, Vec2);
     Color color = line.color;
 
-    int32_t y_diff = point1.y - point2.y;
-    int32_t x_diff = point1.x - point2.x;
+    float y_diff = point1.y - point2.y;
+    float x_diff = point1.x - point2.x;
 
-    if (y_diff == 0 && x_diff == 0)
+    if (y_diff == 0.0f && x_diff == 0.0f)
         return;
 
     int32_t flipped = 0;
@@ -74,54 +74,29 @@ void draw_line(PixelBuffer *buf, Array *points, Array *lines, uint32_t line_inde
         swap(x_diff, y_diff, int32_t);
     }
 
-    float slope = (float)y_diff / (float)x_diff;
+    float slope = y_diff / x_diff;
     float offset = point1.y - slope * point1.x; // y = mx + b -> b = y - mx
 
     Vec2 start = point1.x < point2.x ? point1 : point2;
     Vec2 end = (start.x == point1.x && start.y == point1.y) ? point2 : point1;
 
-    int32_t x = max(start.x, 0);
-    float y = slope * (float)x + offset; // y = mx + b
+    float x = max(start.x, 0.0f);
+    float y = slope * x + offset; // y = mx + b
 
     for (; x <= min(end.x, (flipped ? buf->height : buf->width) - 1); x++) {
-        int32_t y_down = y;
-        int32_t y_up = y + 1;
-        float y_frac = y - (float)y_down;
-        Vec2 p_down, p_up;
+        Vec2 p;
+        if (!flipped)
+            p = vec_from_xy(x, y);
+        else
+            p = vec_from_xy(y, x);
 
-        if (!flipped) {
-            p_down.x = x;
-            p_down.y = y_down;
-
-            p_up.x = x;
-            p_up.y = y_up;
-        } else {
-            p_down.x = y_down;
-            p_down.y = x;
-
-            p_up.x = y_up;
-            p_up.y = x;
-        }
-
-        blend_in(buf, p_down, color, 1 - y_frac);
-        blend_in(buf, p_up, color, y_frac);
+        put_pixels_antialiased(buf, p, color);
 
         y += slope;
     }
 }
 
-void put_pixel_antialiased(PixelBuffer *buf, Vec2 position, Color color, float intensity,
-                           Vec2 outside_dir) {
-    Vec2 p_down = {position.x, position.y};
-    Vec2 p_up = {position.x + outside_dir.x, position.y + outside_dir.y};
-
-    if (in_bounds(buf, p_down))
-        blend_in(buf, p_down, color, 1 - intensity);
-    if (in_bounds(buf, p_up))
-        blend_in(buf, p_up, color, intensity);
-}
-
-Circle create_circle(uint32_t center, uint32_t radius, Color color) {
+Circle create_circle(uint32_t center, float radius, Color color) {
     Circle circle = {center, radius, color};
     return circle;
 }
@@ -131,41 +106,30 @@ Circle create_circle(uint32_t center, uint32_t radius, Color color) {
 void draw_circle(PixelBuffer *buf, Array *points, Array *circles, uint32_t circle_index) {
     Circle circle = arr_get(circles, circle_index, Circle);
     Vec2 center = arr_get(points, circle.center, Vec2);
-    int32_t radius = circle.radius;
+    float radius = circle.radius;
     Color color = circle.color;
 
-    int32_t x = 0;
+    float x = 0;
     float y = radius;
 
     while (x < y) {
-        int32_t y_down = y;
-        float y_frac = y - (float)y_down;
-
-        put_pixel_antialiased(buf, vec_from_xy(x + center.x, y_down + center.y), color, y_frac,
-                              vec_from_xy(0, 1));
-        put_pixel_antialiased(buf, vec_from_xy(-x + center.x, y_down + center.y), color, y_frac,
-                              vec_from_xy(0, 1));
-        put_pixel_antialiased(buf, vec_from_xy(-x + center.x, -y_down + center.y), color, y_frac,
-                              vec_from_xy(0, -1));
-        put_pixel_antialiased(buf, vec_from_xy(x + center.x, -y_down + center.y), color, y_frac,
-                              vec_from_xy(0, -1));
-        put_pixel_antialiased(buf, vec_from_xy(y_down + center.x, x + center.y), color, y_frac,
-                              vec_from_xy(1, 0));
-        put_pixel_antialiased(buf, vec_from_xy(-y_down + center.x, x + center.y), color, y_frac,
-                              vec_from_xy(-1, 0));
-        put_pixel_antialiased(buf, vec_from_xy(-y_down + center.x, -x + center.y), color, y_frac,
-                              vec_from_xy(-1, 0));
-        put_pixel_antialiased(buf, vec_from_xy(y_down + center.x, -x + center.y), color, y_frac,
-                              vec_from_xy(1, 0));
+        put_pixels_antialiased(buf, vec_from_xy(x + center.x, y + center.y), color);
+        put_pixels_antialiased(buf, vec_from_xy(-x + center.x, y + center.y), color);
+        put_pixels_antialiased(buf, vec_from_xy(-x + center.x, -y + center.y), color);
+        put_pixels_antialiased(buf, vec_from_xy(x + center.x, -y + center.y), color);
+        put_pixels_antialiased(buf, vec_from_xy(y + center.x, x + center.y), color);
+        put_pixels_antialiased(buf, vec_from_xy(-y + center.x, x + center.y), color);
+        put_pixels_antialiased(buf, vec_from_xy(-y + center.x, -x + center.y), color);
+        put_pixels_antialiased(buf, vec_from_xy(y + center.x, -x + center.y), color);
 
         x += 1;
-        y = sqrtf((float)sqr(radius) - (float)sqr(x)); // x^2 + y^2 = r^2 -> y = (r^2 - x^2)^1/2
+        y = sqrtf(sqr(radius) - sqr(x)); // x^2 + y^2 = r^2 -> y = (r^2 - x^2)^1/2
     }
 
-    for (int32_t y = -radius + 1; y < radius; y++) {
+    for (int32_t y = -radius + 1; y <= radius; y++) {
         int32_t x_bound = ceilf(sqrtf((float)sqr(radius) - (float)sqr(y)));
-        for (int32_t x = -x_bound + 1; x < x_bound; x++) {
-            Vec2 position = {center.x + x, center.y + y};
+        for (int32_t x = -x_bound + 1; x <= x_bound; x++) {
+            iVec2 position = {center.x + x, center.y + y};
 
             if (!in_bounds(buf, position))
                 break;
@@ -177,22 +141,22 @@ void draw_circle(PixelBuffer *buf, Array *points, Array *circles, uint32_t circl
 
 // TODO: Get rid of this entire thing. Implement a state machine thingy
 void update_tree(PixelBuffer *buf, Array *points, Array *lines, Array *circles, Node *node,
-                 int32_t left_bound, int32_t right_bound, int32_t max_radius) {
+                 float left_bound, float right_bound, float max_radius) {
     if (!node)
         return;
 
     Color color = llrb_is_node_red(node) ? COLOR_RED : COLOR_BLACK;
 
-    int32_t next_y = arr_get(points, node->point_index, Vec2).y + buf->height / 10;
-    int32_t x_unit = (right_bound - left_bound) / 4;
-    int32_t left_x = left_bound + x_unit;
-    int32_t middle_x = left_x + x_unit;
-    int32_t right_x = middle_x + x_unit;
+    float next_y = arr_get(points, node->point_index, Vec2).y + (float)buf->height / 10;
+    float x_unit = (right_bound - left_bound) / 4;
+    float left_x = left_bound + x_unit;
+    float middle_x = left_x + x_unit;
+    float right_x = middle_x + x_unit;
 
-    int32_t radius = (int32_t)min(1.75 * (float)x_unit, (float)max_radius);
+    float radius = min(1.75f * x_unit, max_radius);
 
     if (node->left) {
-        if (!node->left->point_index) {
+        if (node->left->point_index == -1) {
             Vec2 left = {left_x, next_y};
             node->left->point_index = arr_push(points, &left);
 
@@ -203,12 +167,12 @@ void update_tree(PixelBuffer *buf, Array *points, Array *lines, Array *circles, 
             arr_push(lines, &l);
         }
 
-        update_tree(buf, points, lines, circles, node->left, left_bound, min(middle_x, buf->width),
-                    radius);
+        update_tree(buf, points, lines, circles, node->left, left_bound,
+                    min(middle_x, (float)buf->width), radius);
     }
 
     if (node->right) {
-        if (!node->right->point_index) {
+        if (node->right->point_index == -1) {
             Vec2 right = {right_x, next_y};
             node->right->point_index = arr_push(points, &right);
 
@@ -256,13 +220,14 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height, uint32
         counter++;
         root = llrb_push(root, rand());
 
-        if (!root->point_index) {
-            Vec2 p = {width / 2, 50};
+        if (root->point_index == -1) {
+            Vec2 p = {(float)width / 2.0f, 50.0f};
             root->point_index = arr_push(&points, &p);
         }
     }
 
-    update_tree(&buf, &points, &lines, &circles, root, width / 20, 19 * width / 20, 15);
+    update_tree(&buf, &points, &lines, &circles, root, (float)width / 20.0f,
+                19.0f * (float)width / 20, 15);
 
     for (int i = 0; i < lines.length; i++) {
         draw_line(&buf, &points, &lines, i);

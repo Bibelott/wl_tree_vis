@@ -20,6 +20,7 @@ Node *llrb_new_node(int32_t value) {
     memset(node, 0, sizeof(Node));
 
     node->value = value;
+    node->point_index = -1;
     // node->color = NODE_RED; // implicit since NODE_RED == 0
 
     return node;

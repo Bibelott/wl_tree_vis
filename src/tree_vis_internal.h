@@ -18,4 +18,5 @@
         b = tmp;                                                                                   \
     } while (0)
 #define lerp(a, b, r) ((1 - (r)) * (a) + (r) * (b))
+#define clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 
