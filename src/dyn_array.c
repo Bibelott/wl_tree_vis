@@ -10,6 +10,8 @@
 #define arr_find(arr, elem) arr_find_impl((arr), &(elem), sizeof(elem))
 #define arr_push_unique(arr, elem) arr_push_unique_impl((arr), &(elem), sizeof(elem))
 
+// FIX: We cannot be returning pointers. They get when we grow. Return indices instead.
+//
 // NOTE: length and capacity are in bytes
 typedef struct {
     uint32_t length;
@@ -49,7 +51,7 @@ void *arr_push_impl(Array *arr, void *elem, uint32_t size) {
 
     arr->length += size;
 
-    return addr + size;
+    return addr;
 }
 
 void *arr_find_impl(Array *arr, void *elem, uint32_t size) {

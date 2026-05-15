@@ -173,44 +173,53 @@ void draw_circle(PixelBuffer *buf, Circle *circle) {
     }
 }
 
-// TODO: Associate circles with nodes
+// TODO: Get rid of this entire thing. Implement a state machine thingy
 void update_tree(PixelBuffer *buf, Array *points, Array *lines, Array *circles, Node *node,
-                 Vec2 *position, int32_t left_bound, int32_t right_bound, int32_t max_radius) {
+                 int32_t left_bound, int32_t right_bound, int32_t max_radius) {
     if (!node)
         return;
 
     Color color = llrb_is_node_red(node) ? COLOR_RED : COLOR_BLACK;
 
-    int32_t next_y = position->y + buf->height / 10;
+    int32_t next_y = node->point->y + buf->height / 10;
     int32_t x_unit = (right_bound - left_bound) / 4;
     int32_t left_x = left_bound + x_unit;
     int32_t middle_x = left_x + x_unit;
     int32_t right_x = middle_x + x_unit;
 
-    Vec2 left = {left_x, next_y};
-    Vec2 right = {right_x, next_y};
-
-    Vec2 *leftp = arr_push_unique(points, left);
-    Vec2 *rightp = arr_push_unique(points, right);
-
     int32_t radius = (int32_t)min(1.75 * (float)x_unit, (float)max_radius);
 
     if (node->left) {
-        Line l = create_line(position, leftp, COLOR_GREEN);
-        arr_push_unique(lines, l);
-        update_tree(buf, points, lines, circles, node->left, leftp, left_bound,
-                    min(middle_x, buf->width), radius);
-    }
+        if (!node->left->point) {
+            Vec2 left = {left_x, next_y};
+            node->left->point = arr_push(points, left);
 
-    if (node->right) {
-        Line l = create_line(position, rightp, COLOR_GREEN);
-        arr_push_unique(lines, l);
-        update_tree(buf, points, lines, circles, node->right, rightp, max(0, middle_x), right_bound,
+            Circle c = create_circle(node->left->point, radius, color);
+            arr_push(circles, c);
+
+            Line l = create_line(node->point, node->left->point, COLOR_GREEN);
+            arr_push(lines, l);
+        }
+
+        update_tree(buf, points, lines, circles, node->left, left_bound, min(middle_x, buf->width),
                     radius);
     }
 
-    Circle c = create_circle(position, radius, color);
-    arr_push_unique(circles, c);
+    if (node->right) {
+        if (!node->right->point) {
+            Vec2 right = {right_x, next_y};
+            node->right->point = arr_push(points, right);
+
+            Circle c = create_circle(node->right->point, radius, color);
+            arr_push(circles, c);
+
+            Line l = create_line(node->point, node->right->point, COLOR_GREEN);
+            arr_push(lines, l);
+        }
+
+        update_tree(buf, points, lines, circles, node->right, max(0, middle_x), right_bound,
+                    radius);
+    }
 }
 
 void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height, uint32_t time_delta) {
@@ -229,18 +238,20 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height, uint32
     buf.width = width;
     buf.height = height;
 
-    Vec2 p = {width / 2, 50};
-    Vec2 *pp = arr_push_unique(&points, p);
-
     node_timer += time_delta;
 
     if (node_timer > (2500 / (logf((float)counter) + 1))) {
         node_timer = 0;
         counter++;
         root = llrb_push(root, rand());
+
+        if (!root->point) {
+            Vec2 p = {width / 2, 50};
+            root->point = arr_push(&points, p);
+        }
     }
 
-    update_tree(&buf, &points, &lines, &circles, root, pp, width / 20, 19 * width / 20, 15);
+    update_tree(&buf, &points, &lines, &circles, root, width / 20, 19 * width / 20, 15);
 
     for (int i = 0; i < arr_len(&lines, Line); i++) {
         Line *l = &arr_get(&lines, i, Line);
