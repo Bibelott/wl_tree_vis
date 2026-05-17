@@ -148,6 +148,11 @@ static void draw_frame(client_state *state, uint32_t time_delta) {
         state->pixel_data + (current_buffer * state->buffer_size) /
                                 sizeof(uint32_t); // Clangd complains, but this is correct
 
+#if 0
+    printf("%d ms\n", time_delta);
+    printf("%f fps\n", 1000.0f / (float)time_delta);
+#endif
+
     update_and_render(pixels, state->width, state->height, time_delta);
 
     wl_surface_attach(state->wl_surface, state->buffers[current_buffer], 0, 0);
