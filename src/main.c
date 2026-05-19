@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "tree_vis.h"
 #include "xdg-shell-client-protocol.h"
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -13,6 +14,7 @@
 #include <unistd.h>
 #include <wayland-client-protocol.h>
 #include <wayland-client.h>
+#include <xkbcommon/xkbcommon.h>
 
 static const int START_WIDTH = 640;
 static const int START_HEIGHT = 480;
@@ -26,6 +28,7 @@ typedef struct {
     struct wl_display *wl_display;
     struct wl_registry *wl_registry;
     struct wl_compositor *wl_compositor;
+    struct wl_seat *wl_seat;
     struct xdg_wm_base *xdg_wm_base;
     struct wl_buffer **buffers;
     struct wl_shm *wl_shm;
@@ -37,6 +40,10 @@ typedef struct {
     bool running;
 
     /* Objects */
+    struct wl_keyboard *wl_keyboard;
+    struct xkb_context *xkb_context;
+    struct xkb_keymap *xkb_keymap;
+    struct xkb_state *xkb_state;
     struct wl_surface *wl_surface;
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *xdg_toplevel;
@@ -253,6 +260,8 @@ static void registry_global(void *data, struct wl_registry *wl_registry, uint32_
                          2);
     find_and_bind_global((void **)&state->wl_compositor, wl_registry, name, interface,
                          &wl_compositor_interface, 6);
+    find_and_bind_global((void **)&state->wl_seat, wl_registry, name, interface, &wl_seat_interface,
+                         9);
     find_and_bind_global((void **)&state->xdg_wm_base, wl_registry, name, interface,
                          &xdg_wm_base_interface, 6);
 }
@@ -264,6 +273,89 @@ static void registry_global_remove(void *data, struct wl_registry *wl_registry, 
 static const struct wl_registry_listener wl_registry_listener = {
     .global = registry_global,
     .global_remove = registry_global_remove,
+};
+
+static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard, uint32_t format,
+                            int32_t fd, uint32_t size) {
+    assert(format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1);
+
+    client_state *state = data;
+
+    char *keymap_buf = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    assert(keymap_buf != MAP_FAILED);
+
+    state->xkb_keymap = xkb_keymap_new_from_string(
+        state->xkb_context, keymap_buf, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+
+    state->xkb_state = xkb_state_new(state->xkb_keymap);
+
+    munmap(keymap_buf, size);
+    close(fd);
+}
+
+static void keyboard_enter(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial,
+                           struct wl_surface *wl_surface, struct wl_array *keys) {
+    return;
+}
+
+static void keyboard_leave(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial,
+                           struct wl_surface *wl_surface) {
+    return;
+}
+
+static void keyboard_key(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial,
+                         uint32_t time, uint32_t key, uint32_t key_state) {
+    client_state *state = data;
+
+    if (key_state == WL_KEYBOARD_KEY_STATE_RELEASED)
+        return;
+
+    char buf[128];
+    xkb_state_key_get_utf8(state->xkb_state, key + 8, buf, sizeof(buf));
+    printf("Input: %s\n", buf);
+}
+
+static void keyboard_modifiers(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial,
+                               uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked,
+                               uint32_t group) {
+    client_state *state = data;
+
+    xkb_state_update_mask(state->xkb_state, mods_depressed, mods_latched, mods_locked, 0, 0, group);
+}
+
+static void keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard, int32_t rate,
+                                 int32_t delay) {
+    return;
+}
+
+static const struct wl_keyboard_listener wl_keyboard_listener = {
+    .keymap = keyboard_keymap,
+    .enter = keyboard_enter,
+    .leave = keyboard_leave,
+    .key = keyboard_key,
+    .modifiers = keyboard_modifiers,
+    .repeat_info = keyboard_repeat_info,
+};
+
+static void seat_capabilities(void *data, struct wl_seat *wl_seat, uint32_t capability) {
+    client_state *state = data;
+
+    if (capability & WL_SEAT_CAPABILITY_KEYBOARD) {
+        state->wl_keyboard = wl_seat_get_keyboard(wl_seat);
+        wl_keyboard_add_listener(state->wl_keyboard, &wl_keyboard_listener, state);
+    } else if (state->wl_keyboard) {
+        wl_keyboard_release(state->wl_keyboard);
+        state->wl_keyboard = NULL;
+    }
+}
+
+static void seat_name(void *data, struct wl_seat *wl_seat, const char *name) {
+    /* This space deliberately left blank */
+}
+
+static const struct wl_seat_listener wl_seat_listener = {
+    .capabilities = seat_capabilities,
+    .name = seat_name,
 };
 
 int main(int argc, char *argv[]) {
@@ -288,6 +380,10 @@ int main(int argc, char *argv[]) {
     state.xdg_toplevel = xdg_surface_get_toplevel(state.xdg_surface);
     xdg_toplevel_set_title(state.xdg_toplevel, "Wayland RBTree Visualizer");
     xdg_toplevel_add_listener(state.xdg_toplevel, &xdg_toplevel_listener, &state);
+
+    wl_seat_add_listener(state.wl_seat, &wl_seat_listener, &state);
+    state.xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+
     create_window(&state);
     wl_surface_commit(state.wl_surface);
 

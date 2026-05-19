@@ -1,5 +1,5 @@
 include_rules
-LIBS = -lwayland-client -lrt
+LIBS = -lwayland-client -lrt -lxkbcommon
 
 : src/tree_vis.o |> $(CXX) -fuse-ld=$(LD) -shared -o %o %f |> %B.so
 : src/main.o src/xdg-shell-protocol.o tree_vis.so |> $(CXX) $(LIBS) -fuse-ld=$(LD) %f -o %o |> wl_tree_vis
