@@ -36,20 +36,6 @@ Line create_line(uint32_t point1, uint32_t point2, Color color) {
     return line;
 }
 
-// TODO: Determine whether this is an idiotic thing to do
-void put_pixels_antialiased(PixelBuffer *buf, Vec2 position, Color color) {
-    for (int32_t y = -1; y <= 1; y++) {
-        for (int32_t x = -1; x <= 1; x++) {
-            Vec2 p = {roundf(position.x + (float)x), roundf(position.y + (float)y)};
-            iVec2 ip = {p.x, p.y};
-
-            if (in_bounds(buf, ip)) {
-                blend_in(buf, ip, color, 1.0f - vec_distance(position, p));
-            }
-        }
-    }
-}
-
 // NOTE: Based on Wu's line generation algorithm (https://doi.org/10.1145%2F127719.122734)
 void draw_line(PixelBuffer *buf, Array *points, Array *lines, uint32_t line_index, Vec2 scale) {
     Line line = arr_get(lines, line_index, Line);
@@ -87,17 +73,31 @@ void draw_line(PixelBuffer *buf, Array *points, Array *lines, uint32_t line_inde
     Vec2 start = point1.x < point2.x ? point1 : point2;
     Vec2 end = (start.x == point1.x && start.y == point1.y) ? point2 : point1;
 
-    float x = max(start.x, 0.0f);
-    float y = slope * x + offset; // y = mx + b
+    uint32_t x = (uint32_t)max(start.x + 0.5f, 0.5f);
+    float y = slope * (float)x + offset; // y = mx + b
 
-    for (; x <= min(end.x, (flipped ? buf->height : buf->width) - 1); x++) {
-        Vec2 p;
-        if (!flipped)
-            p = vec_from_xy(x, y);
-        else
-            p = vec_from_xy(y, x);
+    for (; x <= min((uint32_t)(end.x + 0.5f), (flipped ? buf->height : buf->width) - 1); x++) {
+        int32_t y_down = y;
+        int32_t y_up = y_down + 1;
+        float y_frac = y - (float)y_down;
 
-        put_pixels_antialiased(buf, p, color);
+        iVec2 p_down, p_up;
+
+        if (!flipped) {
+            p_down.x = x;
+            p_down.y = y_down;
+            p_up.x = x;
+            p_up.y = y_up;
+
+        } else {
+            p_down.x = y_down;
+            p_down.y = x;
+            p_up.x = y_up;
+            p_up.y = x;
+        }
+
+        blend_in(buf, p_down, color, 1 - y_frac);
+        blend_in(buf, p_up, color, y_frac);
 
         y += slope;
     }
@@ -106,6 +106,16 @@ void draw_line(PixelBuffer *buf, Array *points, Array *lines, uint32_t line_inde
 Circle create_circle(uint32_t center, float radius, Color color) {
     Circle circle = {center, radius, color};
     return circle;
+}
+
+void put_pixel_antialiased(PixelBuffer *buf, iVec2 p_down, Color color, float intensity,
+                           iVec2 outside_dir) {
+    iVec2 p_up = {p_down.x + outside_dir.x, p_down.y + outside_dir.y};
+
+    if (in_bounds(buf, p_down))
+        blend_in(buf, p_down, color, 1 - intensity);
+    if (in_bounds(buf, p_up))
+        blend_in(buf, p_up, color, intensity);
 }
 
 // NOTE: Based on Wu's midpoint circle generation (https://doi.org/10.1145%2F127719.122734), but
@@ -120,31 +130,44 @@ void draw_circle(PixelBuffer *buf, Array *points, Array *circles, uint32_t circl
     float radius = circle.radius * scale.x;
     Color color = circle.color;
 
-    float x = 0;
+    int32_t x = 0;
     float y = radius;
+    int32_t center_x = center.x + 0.5f;
+    int32_t center_y = center.y + 0.5f;
 
     while (x < y) {
-        put_pixels_antialiased(buf, vec_from_xy(x + center.x, y + center.y), color);
-        put_pixels_antialiased(buf, vec_from_xy(-x + center.x, y + center.y), color);
-        put_pixels_antialiased(buf, vec_from_xy(-x + center.x, -y + center.y), color);
-        put_pixels_antialiased(buf, vec_from_xy(x + center.x, -y + center.y), color);
-        put_pixels_antialiased(buf, vec_from_xy(y + center.x, x + center.y), color);
-        put_pixels_antialiased(buf, vec_from_xy(-y + center.x, x + center.y), color);
-        put_pixels_antialiased(buf, vec_from_xy(-y + center.x, -x + center.y), color);
-        put_pixels_antialiased(buf, vec_from_xy(y + center.x, -x + center.y), color);
+        int32_t y_down = y;
+        float y_frac = y - (float)y_down;
+
+        put_pixel_antialiased(buf, (iVec2){x + center_x, y_down + center_y}, color, y_frac,
+                              (iVec2){0, 1});
+        put_pixel_antialiased(buf, (iVec2){-x + center_x, y_down + center_y}, color, y_frac,
+                              (iVec2){0, 1});
+        put_pixel_antialiased(buf, (iVec2){-x + center_x, -y_down + center_y}, color, y_frac,
+                              (iVec2){0, -1});
+        put_pixel_antialiased(buf, (iVec2){x + center_x, -y_down + center_y}, color, y_frac,
+                              (iVec2){0, -1});
+        put_pixel_antialiased(buf, (iVec2){y_down + center_x, x + center_y}, color, y_frac,
+                              (iVec2){1, 0});
+        put_pixel_antialiased(buf, (iVec2){-y_down + center_x, x + center_y}, color, y_frac,
+                              (iVec2){-1, 0});
+        put_pixel_antialiased(buf, (iVec2){-y_down + center_x, -x + center_y}, color, y_frac,
+                              (iVec2){-1, 0});
+        put_pixel_antialiased(buf, (iVec2){y_down + center_x, -x + center_y}, color, y_frac,
+                              (iVec2){1, 0});
+
+        for (int32_t xi = center_x - x; xi <= center_x + x; xi++) {
+            buf->fer[(center_y + y_down) * buf->width + xi] = color.hex;
+            buf->fer[(center_y - y_down) * buf->width + xi] = color.hex;
+        }
+
+        for (int32_t xi = center_x - y_down; xi <= center_x + y_down; xi++) {
+            buf->fer[(center_y + x) * buf->width + xi] = color.hex;
+            buf->fer[(center_y - x) * buf->width + xi] = color.hex;
+        }
 
         x += 1;
-        y = sqrtf(sqr(radius) - sqr(x)); // x^2 + y^2 = r^2 -> y = (r^2 - x^2)^1/2
-    }
-
-    for (int32_t y = -radius + 0.5f; y < (radius - 0.5f); y++) {
-        int32_t x_bound = ceilf(sqrtf(sqr(radius) - sqr((float)y)));
-        for (int32_t x = -x_bound + 0.5f; x < (x_bound - 0.5f); x++) {
-            iVec2 position = {roundf(center.x) + x, roundf(center.y) + y};
-
-            if (in_bounds(buf, position))
-                buf->fer[position.y * buf->width + position.x] = color.hex;
-        }
+        y = sqrtf(sqr(radius) - sqr((float)x)); // x^2 + y^2 = r^2 -> y = (r^2 - x^2)^1/2
     }
 }
 
