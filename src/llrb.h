@@ -46,3 +46,24 @@ typedef struct {
     Node *node;
 } LlrbFlipColorsArgs;
 
+typedef enum {
+    LLRB_PUSH_ARGS,
+    LLRB_INSERT_ARGS,
+    LLRB_NEW_NODE_ARGS,
+    LLRB_UP_ARGS,
+    LLRB_ROTATE_ARGS,
+    LLRB_FLIP_COLORS_ARGS,
+} LlrbArgsType;
+
+typedef struct {
+    union {
+        LlrbPushArgs push;
+        LlrbInsertArgs insert;
+        LlrbNewNodeArgs new_node;
+        LlrbUpArgs up;
+        LlrbRotateArgs rotate;
+        LlrbFlipColorsArgs flip_colors;
+    };
+    LlrbArgsType type;
+} LlrbArgs;
+

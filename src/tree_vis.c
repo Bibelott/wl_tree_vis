@@ -179,67 +179,10 @@ void draw_circle(PixelBuffer *buf, Array *points, Array *circles,
     }
 }
 
-// TODO: Get rid of this entire thing. Implement a state machine thingy
-void update_tree(Array *points, Array *lines, Array *circles, Node *node,
-                 float left_bound, float right_bound, float max_radius) {
-    if (!node)
-        return;
-
-    Color color = llrb_is_node_red(node) ? COLOR_RED : COLOR_BLACK;
-
-    float next_y = arr_get(points, node->point_index, Vec2).y + 0.2f;
-    float x_unit = (right_bound - left_bound) / 4.0f;
-    float left_x = left_bound + x_unit;
-    float middle_x = left_x + x_unit;
-    float right_x = middle_x + x_unit;
-
-    // float radius = min(1.75f * x_unit, max_radius);
-    float radius = max_radius;
-
-    if (node->left) {
-        if (node->left->point_index == -1) {
-            Vec2 left = {left_x, next_y};
-            node->left->point_index = arr_push(points, &left);
-
-            Circle c = create_circle(node->left->point_index, radius, color);
-            arr_push(circles, &c);
-
-            Line l = create_line(node->point_index, node->left->point_index,
-                                 COLOR_GREEN);
-            arr_push(lines, &l);
-        }
-
-        update_tree(points, lines, circles, node->left, left_bound, middle_x,
-                    radius);
-    }
-
-    if (node->right) {
-        if (node->right->point_index == -1) {
-            Vec2 right = {right_x, next_y};
-            node->right->point_index = arr_push(points, &right);
-
-            Circle c = create_circle(node->right->point_index, radius, color);
-            arr_push(circles, &c);
-
-            Line l = create_line(node->point_index, node->right->point_index,
-                                 COLOR_GREEN);
-            arr_push(lines, &l);
-        }
-
-        update_tree(points, lines, circles, node->right, middle_x, right_bound,
-                    radius);
-    }
-}
-
 void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height,
                        uint32_t time_delta) {
-    static Node *root = NULL;
-    // static uint32_t node_timer = 0;
     static uint32_t counter = 1;
     static TreeState state = {0};
-    static Array points = {0};
-    static Array lines = {0};
-    static Array circles = {0};
 
     static int random = 0;
 
@@ -249,14 +192,17 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height,
     if (state.operations.capacity == 0)
         state.operations = arr_create(sizeof(Operation));
 
-    if (points.capacity == 0)
-        points = arr_create(sizeof(Vec2));
+    if (state.args.capacity == 0)
+        state.args = arr_create(sizeof(LlrbArgs));
 
-    if (lines.capacity == 0)
-        lines = arr_create(sizeof(Line));
+    if (state.points.capacity == 0)
+        state.points = arr_create(sizeof(Vec2));
 
-    if (circles.capacity == 0)
-        circles = arr_create(sizeof(Circle));
+    if (state.lines.capacity == 0)
+        state.lines = arr_create(sizeof(Line));
+
+    if (state.circles.capacity == 0)
+        state.circles = arr_create(sizeof(Circle));
 
     PixelBuffer buf = {0};
     buf.fer = buffer;
@@ -282,13 +228,17 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height,
 
     random = rand();
     if (state.operations.length == 0) {
+        uint32_t args =
+            arr_push(&state.args, &(LlrbArgs){.push = {.value = random},
+                                              .type = LLRB_PUSH_ARGS});
+
         arr_push(&state.operations,
                  &(Operation){.action = llrb_push,
-                              .data = &(LlrbPushArgs){.value = random},
+                              .args_index = args,
                               .timer = (2500.0f / logf((float)counter))});
-    }
 
-    Array delete_indices = arr_create(sizeof(uint32_t));
+        counter++;
+    }
 
     Array new_ops = arr_create(sizeof(Operation));
 
@@ -297,7 +247,7 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height,
         bool should_delete = false;
 
         if (state.time >= op->timer) {
-            should_delete = op->action(&state, op->data);
+            should_delete = op->action(&state, op->args_index);
 
             // if (should_delete)
             //     arr_push(&delete_indices, &i);
@@ -314,14 +264,12 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height,
     //     arr_delete(&state.operations, index);
     // }
 
-    arr_free(&delete_indices);
-
     float min_x = 1;
     float max_x = -1;
     float max_y = -1;
 
-    for (int i = 0; i < points.length; i++) {
-        Vec2 point = arr_get(&points, i, Vec2);
+    for (int i = 0; i < state.points.length; i++) {
+        Vec2 point = arr_get(&state.points, i, Vec2);
 
         if (point.x < min_x)
             min_x = point.x;
@@ -342,11 +290,11 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height,
     float scale_y = (float)buf.height / max_y;
     Vec2 scale = {min(scale_x, scale_y), offset_x};
 
-    for (int i = 0; i < lines.length; i++) {
-        draw_line(&buf, &points, &lines, i, scale);
+    for (int i = 0; i < state.lines.length; i++) {
+        draw_line(&buf, &state.points, &state.lines, i, scale);
     }
 
-    for (int i = 0; i < circles.length; i++) {
-        draw_circle(&buf, &points, &circles, i, scale);
+    for (int i = 0; i < state.circles.length; i++) {
+        draw_circle(&buf, &state.points, &state.circles, i, scale);
     }
 }
