@@ -7,6 +7,10 @@
 #define COLOR_WHITE color_from_hex(0xFFFFFF)
 #define COLOR_GREEN color_from_hex(0x00FF00)
 
+#define bool uint32_t
+#define false 0
+#define true 1
+
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define abs(x) ((x) < 0 ? (-x) : (x))

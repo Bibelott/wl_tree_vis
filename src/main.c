@@ -103,17 +103,20 @@ static int32_t create_window(client_state *state) {
         return -1;
     }
 
-    uint32_t *data = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    uint32_t *data =
+        mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (data == MAP_FAILED) {
         close(fd);
         return -1;
     }
 
-    struct wl_shm_pool *pool = wl_shm_create_pool(state->wl_shm, fd, total_size);
-    state->buffers[0] = wl_shm_pool_create_buffer(pool, 0, state->width, state->height, stride,
-                                                  WL_SHM_FORMAT_XRGB8888);
-    state->buffers[1] = wl_shm_pool_create_buffer(pool, buffer_size, state->width, state->height,
-                                                  stride, WL_SHM_FORMAT_XRGB8888);
+    struct wl_shm_pool *pool =
+        wl_shm_create_pool(state->wl_shm, fd, total_size);
+    state->buffers[0] = wl_shm_pool_create_buffer(
+        pool, 0, state->width, state->height, stride, WL_SHM_FORMAT_XRGB8888);
+    state->buffers[1] = wl_shm_pool_create_buffer(
+        pool, buffer_size, state->width, state->height, stride,
+        WL_SHM_FORMAT_XRGB8888);
 
     wl_buffer_add_listener(state->buffers[0], &wl_buffer_listener, state);
     wl_buffer_add_listener(state->buffers[1], &wl_buffer_listener, state);
@@ -130,7 +133,8 @@ static int32_t create_window(client_state *state) {
     return 0;
 }
 
-void frame_callback_done(void *data, struct wl_callback *wl_callback, uint32_t time);
+void frame_callback_done(void *data, struct wl_callback *wl_callback,
+                         uint32_t time);
 
 static const struct wl_callback_listener frame_callback_listener = {
     .done = frame_callback_done,
@@ -139,7 +143,8 @@ static const struct wl_callback_listener frame_callback_listener = {
 static void draw_frame(client_state *state, uint32_t time_delta) {
     if (!state->frame_callback) {
         state->frame_callback = wl_surface_frame(state->wl_surface);
-        wl_callback_add_listener(state->frame_callback, &frame_callback_listener, state);
+        wl_callback_add_listener(state->frame_callback,
+                                 &frame_callback_listener, state);
     }
 
     uint32_t current_buffer;
@@ -152,8 +157,9 @@ static void draw_frame(client_state *state, uint32_t time_delta) {
         return;
     }
     uint32_t *pixels =
-        state->pixel_data + (current_buffer * state->buffer_size) /
-                                sizeof(uint32_t); // Clangd complains, but this is correct
+        state->pixel_data +
+        (current_buffer * state->buffer_size) /
+            sizeof(uint32_t); // Clangd complains, but this is correct
 
 #if 0
     printf("%d ms\n", time_delta);
@@ -163,13 +169,15 @@ static void draw_frame(client_state *state, uint32_t time_delta) {
     update_and_render(pixels, state->width, state->height, time_delta);
 
     wl_surface_attach(state->wl_surface, state->buffers[current_buffer], 0, 0);
-    wl_surface_damage_buffer(state->wl_surface, 0, 0, state->width, state->height);
+    wl_surface_damage_buffer(state->wl_surface, 0, 0, state->width,
+                             state->height);
     wl_surface_commit(state->wl_surface);
 
     state->used_buffers[current_buffer] = true;
 }
 
-void frame_callback_done(void *data, struct wl_callback *wl_callback, uint32_t time) {
+void frame_callback_done(void *data, struct wl_callback *wl_callback,
+                         uint32_t time) {
     client_state *state = data;
 
     if (wl_callback == state->frame_callback) {
@@ -186,7 +194,8 @@ void frame_callback_done(void *data, struct wl_callback *wl_callback, uint32_t t
     state->last_frame_time = time;
 }
 
-static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface, uint32_t serial) {
+static void xdg_surface_configure(void *data, struct xdg_surface *xdg_surface,
+                                  uint32_t serial) {
     client_state *state = data;
     xdg_surface_ack_configure(xdg_surface, serial);
 
@@ -197,8 +206,9 @@ static const struct xdg_surface_listener xdg_surface_listener = {
     .configure = xdg_surface_configure,
 };
 
-void xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel, int32_t width,
-                            int32_t height, struct wl_array *states) {
+void xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel,
+                            int32_t width, int32_t height,
+                            struct wl_array *states) {
     client_state *state = data;
     if (width <= 0) {
         width = START_WIDTH;
@@ -216,8 +226,9 @@ void xdg_toplevel_configure(void *data, struct xdg_toplevel *xdg_toplevel, int32
     create_window(state);
 }
 
-void xdg_toplevel_configure_bounds(void *data, struct xdg_toplevel *xdg_toplevel, int32_t width,
-                                   int32_t height) {
+void xdg_toplevel_configure_bounds(void *data,
+                                   struct xdg_toplevel *xdg_toplevel,
+                                   int32_t width, int32_t height) {
 }
 
 void xdg_toplevel_close(void *data, struct xdg_toplevel *xdg_toplevel) {
@@ -236,7 +247,8 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
     .wm_capabilities = xdg_toplevel_wm_capabilities,
 };
 
-static void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base, uint32_t serial) {
+static void xdg_wm_base_ping(void *data, struct xdg_wm_base *xdg_wm_base,
+                             uint32_t serial) {
     xdg_wm_base_pong(xdg_wm_base, serial);
 }
 
@@ -244,29 +256,32 @@ static const struct xdg_wm_base_listener xdg_wm_base_listener = {
     .ping = xdg_wm_base_ping,
 };
 
-static void find_and_bind_global(void **bind_to, struct wl_registry *registry, uint32_t name,
-                                 const char *find_interface, const struct wl_interface *interface,
+static void find_and_bind_global(void **bind_to, struct wl_registry *registry,
+                                 uint32_t name, const char *find_interface,
+                                 const struct wl_interface *interface,
                                  uint32_t version) {
     if (strcmp(find_interface, interface->name) == 0) {
         *bind_to = wl_registry_bind(registry, name, interface, version);
     }
 }
 
-static void registry_global(void *data, struct wl_registry *wl_registry, uint32_t name,
-                            const char *interface, uint32_t version) {
+static void registry_global(void *data, struct wl_registry *wl_registry,
+                            uint32_t name, const char *interface,
+                            uint32_t version) {
     client_state *state = data;
 
-    find_and_bind_global((void **)&state->wl_shm, wl_registry, name, interface, &wl_shm_interface,
-                         2);
-    find_and_bind_global((void **)&state->wl_compositor, wl_registry, name, interface,
-                         &wl_compositor_interface, 6);
-    find_and_bind_global((void **)&state->wl_seat, wl_registry, name, interface, &wl_seat_interface,
-                         9);
-    find_and_bind_global((void **)&state->xdg_wm_base, wl_registry, name, interface,
-                         &xdg_wm_base_interface, 6);
+    find_and_bind_global((void **)&state->wl_shm, wl_registry, name, interface,
+                         &wl_shm_interface, 2);
+    find_and_bind_global((void **)&state->wl_compositor, wl_registry, name,
+                         interface, &wl_compositor_interface, 6);
+    find_and_bind_global((void **)&state->wl_seat, wl_registry, name, interface,
+                         &wl_seat_interface, 9);
+    find_and_bind_global((void **)&state->xdg_wm_base, wl_registry, name,
+                         interface, &xdg_wm_base_interface, 6);
 }
 
-static void registry_global_remove(void *data, struct wl_registry *wl_registry, uint32_t name) {
+static void registry_global_remove(void *data, struct wl_registry *wl_registry,
+                                   uint32_t name) {
     /* This space deliberately left blank */
 }
 
@@ -275,8 +290,8 @@ static const struct wl_registry_listener wl_registry_listener = {
     .global_remove = registry_global_remove,
 };
 
-static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard, uint32_t format,
-                            int32_t fd, uint32_t size) {
+static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
+                            uint32_t format, int32_t fd, uint32_t size) {
     assert(format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1);
 
     client_state *state = data;
@@ -285,7 +300,8 @@ static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard, uint32_
     assert(keymap_buf != MAP_FAILED);
 
     state->xkb_keymap = xkb_keymap_new_from_string(
-        state->xkb_context, keymap_buf, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+        state->xkb_context, keymap_buf, XKB_KEYMAP_FORMAT_TEXT_V1,
+        XKB_KEYMAP_COMPILE_NO_FLAGS);
 
     state->xkb_state = xkb_state_new(state->xkb_keymap);
 
@@ -293,18 +309,20 @@ static void keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard, uint32_
     close(fd);
 }
 
-static void keyboard_enter(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial,
-                           struct wl_surface *wl_surface, struct wl_array *keys) {
+static void keyboard_enter(void *data, struct wl_keyboard *wl_keyboard,
+                           uint32_t serial, struct wl_surface *wl_surface,
+                           struct wl_array *keys) {
     return;
 }
 
-static void keyboard_leave(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial,
-                           struct wl_surface *wl_surface) {
+static void keyboard_leave(void *data, struct wl_keyboard *wl_keyboard,
+                           uint32_t serial, struct wl_surface *wl_surface) {
     return;
 }
 
-static void keyboard_key(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial,
-                         uint32_t time, uint32_t key, uint32_t key_state) {
+static void keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
+                         uint32_t serial, uint32_t time, uint32_t key,
+                         uint32_t key_state) {
     client_state *state = data;
 
     if (key_state == WL_KEYBOARD_KEY_STATE_RELEASED)
@@ -315,16 +333,18 @@ static void keyboard_key(void *data, struct wl_keyboard *wl_keyboard, uint32_t s
     printf("Input: %s\n", buf);
 }
 
-static void keyboard_modifiers(void *data, struct wl_keyboard *wl_keyboard, uint32_t serial,
-                               uint32_t mods_depressed, uint32_t mods_latched, uint32_t mods_locked,
+static void keyboard_modifiers(void *data, struct wl_keyboard *wl_keyboard,
+                               uint32_t serial, uint32_t mods_depressed,
+                               uint32_t mods_latched, uint32_t mods_locked,
                                uint32_t group) {
     client_state *state = data;
 
-    xkb_state_update_mask(state->xkb_state, mods_depressed, mods_latched, mods_locked, 0, 0, group);
+    xkb_state_update_mask(state->xkb_state, mods_depressed, mods_latched,
+                          mods_locked, 0, 0, group);
 }
 
-static void keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard, int32_t rate,
-                                 int32_t delay) {
+static void keyboard_repeat_info(void *data, struct wl_keyboard *wl_keyboard,
+                                 int32_t rate, int32_t delay) {
     return;
 }
 
@@ -337,12 +357,14 @@ static const struct wl_keyboard_listener wl_keyboard_listener = {
     .repeat_info = keyboard_repeat_info,
 };
 
-static void seat_capabilities(void *data, struct wl_seat *wl_seat, uint32_t capability) {
+static void seat_capabilities(void *data, struct wl_seat *wl_seat,
+                              uint32_t capability) {
     client_state *state = data;
 
     if (capability & WL_SEAT_CAPABILITY_KEYBOARD) {
         state->wl_keyboard = wl_seat_get_keyboard(wl_seat);
-        wl_keyboard_add_listener(state->wl_keyboard, &wl_keyboard_listener, state);
+        wl_keyboard_add_listener(state->wl_keyboard, &wl_keyboard_listener,
+                                 state);
     } else if (state->wl_keyboard) {
         wl_keyboard_release(state->wl_keyboard);
         state->wl_keyboard = NULL;
@@ -374,12 +396,14 @@ int main(int argc, char *argv[]) {
     xdg_wm_base_add_listener(state.xdg_wm_base, &xdg_wm_base_listener, &state);
 
     state.wl_surface = wl_compositor_create_surface(state.wl_compositor);
-    state.xdg_surface = xdg_wm_base_get_xdg_surface(state.xdg_wm_base, state.wl_surface);
+    state.xdg_surface =
+        xdg_wm_base_get_xdg_surface(state.xdg_wm_base, state.wl_surface);
 
     xdg_surface_add_listener(state.xdg_surface, &xdg_surface_listener, &state);
     state.xdg_toplevel = xdg_surface_get_toplevel(state.xdg_surface);
     xdg_toplevel_set_title(state.xdg_toplevel, "Wayland RBTree Visualizer");
-    xdg_toplevel_add_listener(state.xdg_toplevel, &xdg_toplevel_listener, &state);
+    xdg_toplevel_add_listener(state.xdg_toplevel, &xdg_toplevel_listener,
+                              &state);
 
     wl_seat_add_listener(state.wl_seat, &wl_seat_listener, &state);
     state.xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);

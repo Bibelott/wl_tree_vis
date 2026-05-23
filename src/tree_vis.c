@@ -1,6 +1,8 @@
 #include "tree_vis.h"
 #include "dyn_array.h"
 #include "llrb.c"
+#include "llrb.h"
+#include "tree_machine.h"
 #include "tree_vis_internal.h"
 #include <math.h>
 #include <stdint.h>
@@ -10,7 +12,8 @@
 #include <unistd.h>
 
 uint32_t in_bounds(PixelBuffer *buf, iVec2 point) {
-    if (point.x < 0 || point.x >= buf->width || point.y < 0 || point.y >= buf->height)
+    if (point.x < 0 || point.x >= buf->width || point.y < 0 ||
+        point.y >= buf->height)
         return 0;
     return 1;
 }
@@ -36,8 +39,10 @@ Line create_line(uint32_t point1, uint32_t point2, Color color) {
     return line;
 }
 
-// NOTE: Based on Wu's line generation algorithm (https://doi.org/10.1145%2F127719.122734)
-void draw_line(PixelBuffer *buf, Array *points, Array *lines, uint32_t line_index, Vec2 scale) {
+// NOTE: Based on Wu's line generation algorithm
+// (https://doi.org/10.1145%2F127719.122734)
+void draw_line(PixelBuffer *buf, Array *points, Array *lines,
+               uint32_t line_index, Vec2 scale) {
     Line line = arr_get(lines, line_index, Line);
     Vec2 point1 = arr_get(points, line.start, Vec2);
     Vec2 point2 = arr_get(points, line.end, Vec2);
@@ -76,7 +81,9 @@ void draw_line(PixelBuffer *buf, Array *points, Array *lines, uint32_t line_inde
     uint32_t x = (uint32_t)max(start.x + 0.5f, 0.5f);
     float y = slope * (float)x + offset; // y = mx + b
 
-    for (; x <= min((uint32_t)(end.x + 0.5f), (flipped ? buf->height : buf->width) - 1); x++) {
+    for (; x <= min((uint32_t)(end.x + 0.5f),
+                    (flipped ? buf->height : buf->width) - 1);
+         x++) {
         int32_t y_down = y;
         int32_t y_up = y_down + 1;
         float y_frac = y - (float)y_down;
@@ -108,8 +115,8 @@ Circle create_circle(uint32_t center, float radius, Color color) {
     return circle;
 }
 
-void put_pixel_antialiased(PixelBuffer *buf, iVec2 p_down, Color color, float intensity,
-                           iVec2 outside_dir) {
+void put_pixel_antialiased(PixelBuffer *buf, iVec2 p_down, Color color,
+                           float intensity, iVec2 outside_dir) {
     iVec2 p_up = {p_down.x + outside_dir.x, p_down.y + outside_dir.y};
 
     if (in_bounds(buf, p_down))
@@ -118,10 +125,10 @@ void put_pixel_antialiased(PixelBuffer *buf, iVec2 p_down, Color color, float in
         blend_in(buf, p_up, color, intensity);
 }
 
-// NOTE: Based on Wu's midpoint circle generation (https://doi.org/10.1145%2F127719.122734), but
-// filled in
-void draw_circle(PixelBuffer *buf, Array *points, Array *circles, uint32_t circle_index,
-                 Vec2 scale) {
+// NOTE: Based on Wu's midpoint circle generation
+// (https://doi.org/10.1145%2F127719.122734), but filled in
+void draw_circle(PixelBuffer *buf, Array *points, Array *circles,
+                 uint32_t circle_index, Vec2 scale) {
     Circle circle = arr_get(circles, circle_index, Circle);
     Vec2 center = arr_get(points, circle.center, Vec2);
     center.x = (center.x * scale.x) + scale.y;
@@ -139,22 +146,22 @@ void draw_circle(PixelBuffer *buf, Array *points, Array *circles, uint32_t circl
         int32_t y_down = y;
         float y_frac = y - (float)y_down;
 
-        put_pixel_antialiased(buf, (iVec2){x + center_x, y_down + center_y}, color, y_frac,
-                              (iVec2){0, 1});
-        put_pixel_antialiased(buf, (iVec2){-x + center_x, y_down + center_y}, color, y_frac,
-                              (iVec2){0, 1});
-        put_pixel_antialiased(buf, (iVec2){-x + center_x, -y_down + center_y}, color, y_frac,
-                              (iVec2){0, -1});
-        put_pixel_antialiased(buf, (iVec2){x + center_x, -y_down + center_y}, color, y_frac,
-                              (iVec2){0, -1});
-        put_pixel_antialiased(buf, (iVec2){y_down + center_x, x + center_y}, color, y_frac,
-                              (iVec2){1, 0});
-        put_pixel_antialiased(buf, (iVec2){-y_down + center_x, x + center_y}, color, y_frac,
-                              (iVec2){-1, 0});
-        put_pixel_antialiased(buf, (iVec2){-y_down + center_x, -x + center_y}, color, y_frac,
-                              (iVec2){-1, 0});
-        put_pixel_antialiased(buf, (iVec2){y_down + center_x, -x + center_y}, color, y_frac,
-                              (iVec2){1, 0});
+        put_pixel_antialiased(buf, (iVec2){x + center_x, y_down + center_y},
+                              color, y_frac, (iVec2){0, 1});
+        put_pixel_antialiased(buf, (iVec2){-x + center_x, y_down + center_y},
+                              color, y_frac, (iVec2){0, 1});
+        put_pixel_antialiased(buf, (iVec2){-x + center_x, -y_down + center_y},
+                              color, y_frac, (iVec2){0, -1});
+        put_pixel_antialiased(buf, (iVec2){x + center_x, -y_down + center_y},
+                              color, y_frac, (iVec2){0, -1});
+        put_pixel_antialiased(buf, (iVec2){y_down + center_x, x + center_y},
+                              color, y_frac, (iVec2){1, 0});
+        put_pixel_antialiased(buf, (iVec2){-y_down + center_x, x + center_y},
+                              color, y_frac, (iVec2){-1, 0});
+        put_pixel_antialiased(buf, (iVec2){-y_down + center_x, -x + center_y},
+                              color, y_frac, (iVec2){-1, 0});
+        put_pixel_antialiased(buf, (iVec2){y_down + center_x, -x + center_y},
+                              color, y_frac, (iVec2){1, 0});
 
         for (int32_t xi = center_x - x; xi <= center_x + x; xi++) {
             buf->fer[(center_y + y_down) * buf->width + xi] = color.hex;
@@ -167,13 +174,14 @@ void draw_circle(PixelBuffer *buf, Array *points, Array *circles, uint32_t circl
         }
 
         x += 1;
-        y = sqrtf(sqr(radius) - sqr((float)x)); // x^2 + y^2 = r^2 -> y = (r^2 - x^2)^1/2
+        y = sqrtf(sqr(radius) -
+                  sqr((float)x)); // x^2 + y^2 = r^2 -> y = (r^2 - x^2)^1/2
     }
 }
 
 // TODO: Get rid of this entire thing. Implement a state machine thingy
-void update_tree(Array *points, Array *lines, Array *circles, Node *node, float left_bound,
-                 float right_bound, float max_radius) {
+void update_tree(Array *points, Array *lines, Array *circles, Node *node,
+                 float left_bound, float right_bound, float max_radius) {
     if (!node)
         return;
 
@@ -196,11 +204,13 @@ void update_tree(Array *points, Array *lines, Array *circles, Node *node, float 
             Circle c = create_circle(node->left->point_index, radius, color);
             arr_push(circles, &c);
 
-            Line l = create_line(node->point_index, node->left->point_index, COLOR_GREEN);
+            Line l = create_line(node->point_index, node->left->point_index,
+                                 COLOR_GREEN);
             arr_push(lines, &l);
         }
 
-        update_tree(points, lines, circles, node->left, left_bound, middle_x, radius);
+        update_tree(points, lines, circles, node->left, left_bound, middle_x,
+                    radius);
     }
 
     if (node->right) {
@@ -211,24 +221,33 @@ void update_tree(Array *points, Array *lines, Array *circles, Node *node, float 
             Circle c = create_circle(node->right->point_index, radius, color);
             arr_push(circles, &c);
 
-            Line l = create_line(node->point_index, node->right->point_index, COLOR_GREEN);
+            Line l = create_line(node->point_index, node->right->point_index,
+                                 COLOR_GREEN);
             arr_push(lines, &l);
         }
 
-        update_tree(points, lines, circles, node->right, middle_x, right_bound, radius);
+        update_tree(points, lines, circles, node->right, middle_x, right_bound,
+                    radius);
     }
 }
 
-void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height, uint32_t time_delta) {
+void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height,
+                       uint32_t time_delta) {
     static Node *root = NULL;
-    static uint32_t node_timer = 0;
+    // static uint32_t node_timer = 0;
     static uint32_t counter = 1;
+    static TreeState state = {0};
     static Array points = {0};
     static Array lines = {0};
     static Array circles = {0};
 
+    static int random = 0;
+
     // clear buffer
     memset(buffer, 0x2A, width * height * sizeof(uint32_t));
+
+    if (state.operations.capacity == 0)
+        state.operations = arr_create(sizeof(Operation));
 
     if (points.capacity == 0)
         points = arr_create(sizeof(Vec2));
@@ -244,20 +263,58 @@ void update_and_render(uint32_t *buffer, uint32_t width, uint32_t height, uint32
     buf.width = width;
     buf.height = height;
 
-    node_timer += time_delta;
+    state.time += time_delta;
 
-    if (node_timer > (2500 / (logf((float)counter) + 1))) {
-        node_timer = 0;
-        counter++;
-        root = llrb_push(root, rand());
+    // node_timer += time_delta;
 
-        if (root->point_index == -1) {
-            Vec2 p = {0, 0.5f};
-            root->point_index = arr_push(&points, &p);
-        }
+    // if (node_timer > (2500 / (logf((float)counter) + 1))) {
+    //     node_timer = 0;
+    //     counter++;
+    //     root = llrb_push(root, rand());
+    //
+    //     if (root->point_index == -1) {
+    //         Vec2 p = {0, 0.5f};
+    //         root->point_index = arr_push(&points, &p);
+    //     }
+    // }
+
+    // update_tree(&points, &lines, &circles, root, -1.0f, 1.0f, 0.1f);
+
+    random = rand();
+    if (state.operations.length == 0) {
+        arr_push(&state.operations,
+                 &(Operation){.action = llrb_push,
+                              .data = &(LlrbPushArgs){.value = random},
+                              .timer = (2500.0f / logf((float)counter))});
     }
 
-    update_tree(&points, &lines, &circles, root, -1.0f, 1.0f, 0.1f);
+    Array delete_indices = arr_create(sizeof(uint32_t));
+
+    Array new_ops = arr_create(sizeof(Operation));
+
+    for (uint32_t i = 0; i < state.operations.length; i++) {
+        Operation *op = &arr_get(&state.operations, i, Operation);
+        bool should_delete = false;
+
+        if (state.time >= op->timer) {
+            should_delete = op->action(&state, op->data);
+
+            // if (should_delete)
+            //     arr_push(&delete_indices, &i);
+        }
+        if (!should_delete)
+            arr_push(&new_ops, op);
+    }
+
+    arr_free(&state.operations);
+    state.operations = new_ops;
+
+    // for (uint32_t i = 0; i < delete_indices.length; i++) {
+    //     uint32_t index = arr_get(&delete_indices, i, uint32_t);
+    //     arr_delete(&state.operations, index);
+    // }
+
+    arr_free(&delete_indices);
 
     float min_x = 1;
     float max_x = -1;
